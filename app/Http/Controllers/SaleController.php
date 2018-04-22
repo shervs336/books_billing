@@ -11,6 +11,9 @@ use Illuminate\Http\Request;
 use Flash;
 use Prettus\Repository\Criteria\RequestCriteria;
 use Response;
+use DB;
+use App\Models\Book;
+use PDF;
 
 class SaleController extends AppBaseController
 {
@@ -45,12 +48,15 @@ class SaleController extends AppBaseController
     public function create(BookRepository $books)
     {
 
-        $books = $books->all()->mapWithKeys(function($item){
-          return [$item['id'] => $item['title'] . ' (' . $item['stocks'] .')'];
+        $booksJson = $books->all();
+
+        $books = $books->all()->map(function($item){
+          return $item['title'] . ' (' . $item['stocks'] .')';
         })->toArray();
 
         return view('sales.create')
-            ->with('books', $books);
+            ->with('books', $books)
+            ->with('booksJson', $booksJson);
     }
 
     /**
@@ -60,11 +66,32 @@ class SaleController extends AppBaseController
      *
      * @return Response
      */
-    public function store(CreateSaleRequest $request)
+    public function store(Request $request)
     {
         $input = $request->all();
 
-        $sale = $this->saleRepository->create($input);
+        if(!isset($input["book_id"])){
+          Flash::error('No items selected.');
+          return redirect(route('sales.create'));
+        }
+
+        DB::transaction(function() use ($input){
+          $sale = $this->saleRepository->create(['code' => str_random(6)]);
+          for($i = 0; $i < count($input["book_id"]); $i++) {
+
+            $book = Book::find($input["book_id"][$i]);
+            // Reduce Stock Number
+            $book->stocks = $book->stocks - $input["quantity"][$i];
+            $book->save();
+
+            $sale->books()->attach($input["book_id"][$i], [
+              'quantity' => $input["quantity"][$i],
+              'price' => $input["price"][$i],
+              'total_price' => $input["price"][$i] * $input["quantity"][$i]
+            ]);
+
+          }
+        });
 
         Flash::success('Sale saved successfully.');
 
@@ -98,9 +125,15 @@ class SaleController extends AppBaseController
      *
      * @return Response
      */
-    public function edit($id)
+    public function edit($id, BookRepository $books)
     {
         $sale = $this->saleRepository->findWithoutFail($id);
+
+        $booksJson = $books->all();
+
+        $books = $books->all()->map(function($item){
+          return $item['title'] . ' (' . $item['stocks'] .')';
+        })->toArray();
 
         if (empty($sale)) {
             Flash::error('Sale not found');
@@ -108,7 +141,9 @@ class SaleController extends AppBaseController
             return redirect(route('sales.index'));
         }
 
-        return view('sales.edit')->with('sale', $sale);
+        return view('sales.edit')->with('sale', $sale)
+            ->with('books', $books)
+            ->with('booksJson', $booksJson);
     }
 
     /**
@@ -123,13 +158,51 @@ class SaleController extends AppBaseController
     {
         $sale = $this->saleRepository->findWithoutFail($id);
 
+        $input = $request->all();
+
+        if(!isset($input["book_id"])){
+          Flash::error('No items selected.');
+          return redirect(route('sales.create'));
+        }
+
         if (empty($sale)) {
             Flash::error('Sale not found');
 
             return redirect(route('sales.index'));
         }
 
-        $sale = $this->saleRepository->update($request->all(), $id);
+        DB::transaction(function() use ($input, $sale){
+          // Restore Old Values
+          foreach ($sale->books as $book) {
+
+            $bookOriginal = Book::find($book->id);
+
+            // Return Stock Number
+            $bookOriginal->stocks = $bookOriginal->stocks + $book->getOriginal('pivot_quantity');
+            $bookOriginal->save();
+
+            $sale->books()->detach($bookOriginal->id);
+          }
+
+          for($i = 0; $i < count($input["book_id"]); $i++) {
+
+            $book = Book::find($input["book_id"][$i]);
+            // Reduce Stock Number
+            $book->stocks = $book->stocks - $input["quantity"][$i];
+            $book->save();
+
+            $sale->books()->attach($input["book_id"][$i], [
+              'quantity' => $input["quantity"][$i],
+              'price' => $input["price"][$i],
+              'total_price' => $input["price"][$i] * $input["quantity"][$i]
+            ]);
+
+          }
+
+
+        });
+
+        //$sale = $this->saleRepository->update($request->all(), $id);
 
         Flash::success('Sale updated successfully.');
 
@@ -153,10 +226,31 @@ class SaleController extends AppBaseController
             return redirect(route('sales.index'));
         }
 
-        $this->saleRepository->delete($id);
+        DB::transaction(function() use ($id, $sale){
+          foreach ($sale->books as $book) {
+
+            $bookOriginal = Book::find($book->id);
+
+            // Return Stock Number
+            $bookOriginal->stocks = $bookOriginal->stocks + $book->getOriginal('pivot_quantity');
+            $bookOriginal->save();
+          }
+
+          $this->saleRepository->delete($id);
+        });
+
+
 
         Flash::success('Sale deleted successfully.');
 
         return redirect(route('sales.index'));
+    }
+
+    public function print($id)
+    {
+      $sale = $this->saleRepository->findWithoutFail($id);
+
+      $pdf = PDF::loadView('sales.print', compact('sale'));
+      return $pdf->stream('Receipt-No-'.str_pad($sale->id, 8, 0, STR_PAD_LEFT).'.pdf');
     }
 }

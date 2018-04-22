@@ -17,6 +17,7 @@ class CreateBookSaleTable extends Migration
             $table->integer('sale_id')->unsigned();
             $table->integer('book_id')->unsigned();
             $table->decimal('price', 12, 2)->default(0);
+            $table->decimal('total_price', 12, 2)->default(0);
             $table->integer('quantity')->default(0);
         });
     }

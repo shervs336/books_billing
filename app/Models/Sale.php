@@ -22,8 +22,8 @@ class Sale extends Model
     protected $dates = ['deleted_at'];
 
 
-    public $fillable = [
-        'code'
+    public $guarded = [
+
     ];
 
     /**
@@ -43,6 +43,11 @@ class Sale extends Model
     public static $rules = [
         'code' => ''
     ];
+
+    public function books()
+    {
+      return $this->belongsToMany('App\Models\Book')->withPivot(['price', 'quantity', 'total_price']);
+    }
 
 
 }
