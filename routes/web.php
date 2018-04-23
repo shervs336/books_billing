@@ -12,8 +12,7 @@
 */
 Auth::routes();
 
-Route::get('/', 'DashboardController@index');
-Route::get('/dashboard', 'DashboadController@index')->name('dashboard');
+Route::get('/', 'DashboardController@index')->name('dashboard');
 
 Route::resource('books', 'BookController');
 

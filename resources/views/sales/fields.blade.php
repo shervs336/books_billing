@@ -16,8 +16,8 @@
       </thead>
       <tbody>
         <tr>
-          <td>{!! Form::hidden('book_id[]', null) !!}</td>
-          <td>{!! Form::text('quantity[]', null, ['class' => 'form-control']) !!}</td>
+          <td>{!! Form::hidden('book_id[]', null) !!}{!! Form::hidden('book_id_select[]', null) !!}</td>
+          <td><div class="form-group">{!! Form::text('quantity[]', null, ['class' => 'form-control']) !!}</div></td>
           <td>
             ₱ {!! Form::hidden('price[]', null, ['class' => 'form-control']) !!}
           </td>
@@ -48,7 +48,13 @@
   <script>
     var saleRow = '';
     var bookData = {!! json_encode($booksJson->toArray()) !!};
+
+    toastr.options = {
+      "positionClass": "toast-top-center",
+      "closeButton": true,
+    }
     $(function(){
+
       $('.selectpicker').select2();
 
       saleRow = $('#saleFieldTable tbody tr').first().wrap('<p/>').parent().html();
@@ -64,14 +70,27 @@
 
       $('#addBook').click(function(){
         var selection = $('#books').val();
-        console.log(bookData[selection]);
-        $('#saleFieldTable tbody').append(saleRow);
-        $('#saleFieldTable tbody tr:last-child input').val();
-        fillColumn(1, bookData[selection]['title']);
-        fillValue('[name="book_id[]"]', bookData[selection]['id']);
-        fillColumn(2, '<i class="text-danger">'+bookData[selection]['stocks'] + ' books remaining</i>');
-        fillValue('[name="price[]"]', bookData[selection]['price']);
-        fillColumn(3, bookData[selection]['price']);
+        var toAdd = true;
+
+        var test = $('[name="book_id_select[]"]').each(function(index){
+          console.log($(this).val() + '-' + selection)
+          if($(this).val() == selection){
+            toAdd = false;
+            toastr["warning"]("Book is already added in the sales table.");
+            return false;
+          }
+        });
+
+        if(toAdd){
+          $('#saleFieldTable tbody').append(saleRow);
+          $('#saleFieldTable tbody tr:last-child input').val();
+          fillColumn(1, bookData[selection]['title']);
+          fillValue('[name="book_id[]"]', bookData[selection]['id']);
+          fillValue('[name="book_id_select[]"]', selection);
+          fillColumn(2, '<i class="text-danger"><span class="stocks">'+bookData[selection]['stocks'] + '</span> books remaining</i>');
+          fillValue('[name="price[]"]', bookData[selection]['price']);
+          fillColumn(3, bookData[selection]['price']);
+        }
       });
 
       $('#removeBook').click(function(){
@@ -88,6 +107,30 @@
       {
         $('#saleFieldTable tbody tr:last-child '+target).val(value);
       }
+
+      $(document).on('input propertychange paste', '[name="quantity[]"]', function(){
+        if(parseInt($(this).val()) > parseInt($(this).parent('.form-group').siblings('i').find('.stocks').text())){
+          $(this).parent('.form-group').addClass('has-error');
+        } else {
+          $(this).parent('.form-group').removeClass('has-error');
+        }
+      });
+
+      $('form').on('submit', function(e){
+        var allowSubmit = true;
+
+        $('[name="quantity[]"]').each(function(index){
+          if($(this).parent(".form-group").hasClass('has-error')){
+            allowSubmit = false;
+            toastr["warning"]("There are still errors with your inputs.");
+            return false;
+          }
+        });
+
+        if(!allowSubmit){
+            e.preventDefault();
+        }
+      });
 
     });
   </script>
